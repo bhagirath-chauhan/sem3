@@ -1,19 +1,15 @@
 #include <stdio.h>
-#include <limits.h> // used for INT_MAX if needed in expansions
 
-// -------------------------------------------
-// PROCESS STRUCTURE
-// -------------------------------------------
 struct Process
 {
-    int pid;        // Process ID
-    int arrival;    // Arrival Time
-    int burst;      // Original Burst Time
-    int remaining;  // Remaining time (will decrease during execution)
-    int finish;     // Finish Time
-    int waiting;    // Waiting Time
-    int turnaround; // Turnaround Time
+    int pid;
+    int arrival;
+    int burst;
+    int remaining;
     int start;
+    int finish;
+    int waiting;
+    int turnaround;
     int responseTime;
 };
 
@@ -21,10 +17,6 @@ int main()
 {
 
     int n, quantum;
-
-    // -------------------------------------------
-    // INPUT: NUMBER OF PROCESSES + TIME QUANTUM
-    // -------------------------------------------
     printf("Enter number of processes: ");
     scanf("%d", &n);
 
@@ -33,113 +25,128 @@ int main()
 
     struct Process p[n];
 
-    // -------------------------------------------
-    // INPUT: DETAILS OF EACH PROCESS
-    // -------------------------------------------
     for (int i = 0; i < n; i++)
     {
-
-        p[i].pid = i + 1; // Assign PID 1,2,3...
-
+        p[i].pid = i + 1;
         printf("\nProcess %d Arrival Time: ", p[i].pid);
         scanf("%d", &p[i].arrival);
 
         printf("Process %d Burst Time: ", p[i].pid);
         scanf("%d", &p[i].burst);
 
-        // Remaining time = full burst time (initially)
         p[i].remaining = p[i].burst;
+        p[i].start = -1; // set start time not executed yet
     }
 
-    // -------------------------------------------
-    // ROUND ROBIN CPU SIMULATION VARIABLES
-    // -------------------------------------------
-    int time = 0;      // Current CPU time
-    int completed = 0; // Count how many processes are finished
-    int doneFlag;      // Checks if at least one process ran in a cycle
+    // Ready Queue
+    int queue[100];
+    int front = 0, rear = 0;
 
-    // -------------------------------------------
-    // MAIN ROUND-ROBIN LOOP (runs until all complete)
-    // -------------------------------------------
+    int time = 0;
+    int completed = 0;
+    int visited[n];
+
+    for (int i = 0; i < n; i++)
+        visited[i] = 0;
+
+    // push processes that arrive at time 0
+    // quantum 2
+    // P1 0 2
+    // P2 2 5
+    // [P1]
+    // rear = 1
+    // front = 0
+    // time = 0;
+
+    for (int i = 0; i < n; i++)
+    {
+        if (p[i].arrival == 0)
+        {
+            queue[rear++] = i;
+            visited[i] = 1;
+        }
+    }
+
+    // main loop
+
+    // quantum 2
+    // P1 0 2 2
+    // P2 2 5
+    // P3 1 3
+    // P4 4 4
+    // P5 6 1
+    // [P1]
+    // rear = 1
+    // front = 0
+    // time = 0;
     while (completed < n)
     {
-
-        doneFlag = 0; // reset for this pass
-
-        // -------------------------------------------
-        // ITERATE OVER ALL PROCESSES IN ROUND ROBIN ORDER
-        // -------------------------------------------
-        for (int i = 0; i < n; i++)
+        // if queue empty → idle CPU
+        if (front == rear)
         {
-
-            // PROCESS CAN RUN ONLY IF:
-            // 1. It has already arrived (arrival <= time)
-            // 2. It still has some remaining time
-            // P1 3 6 4
-            // P2 0 4 0
-            // P3 5 2 0
-            // P4 1 3 1
-            // P5 8 4 4
-            // quantum 2
-            // time 10
-            if (p[i].arrival <= time && p[i].remaining > 0)
+            time++;
+            // push newly arrived processes
+            for (int i = 0; i < n; i++)
             {
-
-                doneFlag = 1; // at least one process got CPU time
-
-                if (p[i].remaining == p[i].burst)
+                if (p[i].arrival == time && visited[i] == 0)
                 {
-                    p[i].start = time;
-                    p[i].responseTime = p[i].start - p[i].arrival;
+                    queue[rear++] = i;
+                    visited[i] = 1;
                 }
+            }
+            continue;
+        }
 
-                // CASE 1: Remaining time > quantum → run for "quantum"
-                if (p[i].remaining > quantum)
+        int idx = queue[front++]; // front 1
+
+        // FIRST TIME executing
+        if (p[idx].start == -1)
+        {
+            p[idx].start = time;
+            p[idx].responseTime = p[idx].start - p[idx].arrival;
+        }
+
+        // run for quantum or remaining
+        int runTime = (p[idx].remaining > quantum) ? quantum : p[idx].remaining;
+        time += runTime;             // 2
+        p[idx].remaining -= runTime; // 0
+
+        // quantum 2
+        // P1 0 2 2
+        // P2 2 5 5
+        // P3 1 3 3
+        // P4 4 4 4
+        // P5 6 1 1
+        // after time increases → add new arrivals
+        for (int t = time - runTime + 1; t <= time; t++)
+        {
+            for (int i = 0; i < n; i++)
+            {
+                if (p[i].arrival == t && visited[i] == 0)
                 {
-
-                    // Use quantum units on CPU
-                    time += quantum; // 6
-
-                    // Subtract used time from remaining
-                    p[i].remaining -= quantum; // 4
-                }
-
-                // CASE 2: Remaining time <= quantum → process will finish!
-                else
-                {
-
-                    // Increase time only by the amount required to finish
-                    time += p[i].remaining; // 11
-
-                    p[i].remaining = 0; // now completed
-
-                    completed++; // increase completed count
-
-                    // Record finish time
-                    p[i].finish = time;
-
-                    // Calculate turnaround time = FT - AT
-                    p[i].turnaround = p[i].finish - p[i].arrival; // 10
-
-                    // Waiting time = TAT - BT
-                    p[i].waiting = p[i].turnaround - p[i].burst; // 7
+                    queue[rear++] = i;
+                    visited[i] = 1;
                 }
             }
         }
 
-        // -------------------------------------------
-        // CPU WAS IDLE (nobody arrived yet)
-        // -------------------------------------------
-        if (doneFlag == 0)
+        // if process still not completed → push back
+        if (p[idx].remaining > 0)
         {
-            time++; // move time forward
+            queue[rear++] = idx;
+        }
+        else
+        {
+            // process finished
+            completed++;
+            p[idx].finish = time;                               // 2
+            p[idx].turnaround = p[idx].finish - p[idx].arrival; // 2
+            p[idx].waiting = p[idx].turnaround - p[idx].burst;  // 0
         }
     }
 
-    // -------------------------------------------
-    // OUTPUT TABLE
-    // -------------------------------------------
-    printf("\nPID\tAT\tBT\tST\tFT\tWT\tTAT\tRD\n");
+    // OUTPUT
+    printf("\nPID\tAT\tBT\tST\tFT\tWT\tTAT\tRT\n");
     for (int i = 0; i < n; i++)
     {
         printf("%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d\n",
